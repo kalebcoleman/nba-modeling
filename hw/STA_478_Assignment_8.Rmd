@@ -1,0 +1,343 @@
+---
+title: "STA_478_Assignment_8"
+author: "Kaleb Coleman"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.height = 4,
+  fig.width = 6
+)
+```
+
+```{r libraries}
+library(ISLR2)
+library(splines)
+library(gam)
+library(tree)
+library(randomForest)
+library(gbm)
+library(BART)
+```
+
+## Chapter 7 Lab: Moving Beyond Linearity
+
+### Polynomial Regression for Wage vs. Age
+
+```{r poly-regression}
+data("Wage")
+
+set.seed(123)
+agelims <- range(Wage$age)
+age.grid <- seq(from = agelims[1], to = agelims[2])
+
+fit_poly4 <- lm(wage ~ poly(age, 4), data = Wage)
+pred_poly4 <- predict(fit_poly4,
+  newdata = list(age = age.grid),
+  se = TRUE
+)
+se.bands <- cbind(
+  pred_poly4$fit + 2 * pred_poly4$se.fit,
+  pred_poly4$fit - 2 * pred_poly4$se.fit
+)
+
+plot(Wage$age, Wage$wage,
+  xlim = agelims, cex = 0.5,
+  col = "darkgrey",
+  main = "Degree-4 Polynomial Fit"
+)
+lines(age.grid, pred_poly4$fit, lwd = 2, col = "blue")
+matlines(age.grid, se.bands, lwd = 1, col = "blue", lty = 3)
+```
+
+The quartic polynomial tracks the rise and fall of wages with age, and the bands widen near the youngest and oldest workers where information is scarce.
+
+\newpage
+
+### ANOVA Model Comparison
+
+```{r poly-anova}
+fit.1 <- lm(wage ~ age, data = Wage)
+fit.2 <- lm(wage ~ poly(age, 2), data = Wage)
+fit.3 <- lm(wage ~ poly(age, 3), data = Wage)
+fit.4 <- lm(wage ~ poly(age, 4), data = Wage)
+fit.5 <- lm(wage ~ poly(age, 5), data = Wage)
+
+anova(fit.1, fit.2, fit.3, fit.4, fit.5)
+coef(summary(fit.5))
+```
+
+Significance drops sharply after the cubic term, so degree 3–4 captures the curvature while degree 5 provides little extra explanatory power.
+
+\newpage
+
+### Logistic Regression for High Earners
+
+```{r logistic-reg}
+fit_logit <- glm(I(wage > 250) ~ poly(age, 4),
+  data = Wage,
+  family = binomial)
+preds_logit <- predict(fit_logit,
+  newdata = list(age = age.grid),
+  se = TRUE)
+pfit <- exp(preds_logit$fit) / (1 + exp(preds_logit$fit))
+se.bands.logit <- cbind(
+  preds_logit$fit + 2 * preds_logit$se.fit,
+  preds_logit$fit - 2 * preds_logit$se.fit)
+se.bands.prob <- exp(se.bands.logit) / (1 + exp(se.bands.logit))
+
+plot(Wage$age, I(Wage$wage > 250),
+  xlim = agelims, type = "n", ylim = c(0, 0.2),
+  main = "Probability of Wage > 250")
+points(jitter(Wage$age),
+  I((Wage$wage > 250) / 5),
+  cex = 0.5, pch = "|", col = "darkgrey")
+lines(age.grid, pfit, lwd = 2, col = "blue")
+matlines(age.grid, se.bands.prob, lwd = 1, col = "blue", lty = 3)
+```
+
+High-earner probability peaks for late-career workers and drops toward zero at the youngest and oldest ages, with wider uncertainty where we lack data.
+
+\newpage
+
+### Step Functions
+
+```{r step-function}
+cut_table <- table(cut(Wage$age, 4))
+fit_step <- lm(wage ~ cut(age, 4), data = Wage)
+
+cut_table
+coef(summary(fit_step))
+```
+
+Average wage jumps by about \$24k for the middle age bins, and the sparse oldest bin carries the noisiest estimate.
+
+\newpage
+
+### Splines and Smoothing
+
+```{r splines}
+fit_bs <- lm(wage ~ bs(age, knots = c(25, 40, 60)), data = Wage)
+pred_bs <- predict(fit_bs, newdata = list(age = age.grid), se = TRUE)
+
+fit_ns <- lm(wage ~ ns(age, df = 4), data = Wage)
+pred_ns <- predict(fit_ns, newdata = list(age = age.grid), se = TRUE)
+
+plot(Wage$age, Wage$wage, col = "gray", main = "Regression Splines")
+lines(age.grid, pred_bs$fit, lwd = 2)
+lines(age.grid, pred_bs$fit + 2 * pred_bs$se, lty = "dashed")
+lines(age.grid, pred_bs$fit - 2 * pred_bs$se, lty = "dashed")
+lines(age.grid, pred_ns$fit, col = "red", lwd = 2)
+```
+
+Both spline fits align in the center, while the natural spline straightens in the tails, giving more stable extrapolation at the boundaries.
+
+\newpage
+
+```{r smoothing-splines}
+fit_smooth_16 <- smooth.spline(Wage$age, Wage$wage, df = 16)
+fit_smooth_cv <- smooth.spline(Wage$age, Wage$wage, cv = TRUE)
+
+plot(Wage$age, Wage$wage,
+  xlim = agelims, cex = 0.5, col = "darkgrey",
+  main = "Smoothing Splines"
+)
+lines(fit_smooth_16, col = "red", lwd = 2)
+lines(fit_smooth_cv, col = "blue", lwd = 2)
+legend("topright",
+  legend = c("16 DF", paste0(round(fit_smooth_cv$df, 1), " DF")),
+  col = c("red", "blue"), lty = 1, lwd = 2, cex = 0.8
+)
+```
+
+Cross-validation prefers a much smoother $\\approx 7$ df curve, which suppresses the wiggles that the 16-df fit captures.
+
+\newpage
+
+### Local Regression and GAMs
+
+```{r local-regression}
+fit_loess_02 <- loess(wage ~ age, span = 0.2, data = Wage)
+fit_loess_05 <- loess(wage ~ age, span = 0.5, data = Wage)
+
+plot(Wage$age, Wage$wage,
+  xlim = agelims, cex = 0.5, col = "darkgrey",
+  main = "Local Regression"
+)
+lines(age.grid, predict(fit_loess_02, data.frame(age = age.grid)),
+  col = "red", lwd = 2
+)
+lines(age.grid, predict(fit_loess_05, data.frame(age = age.grid)),
+  col = "blue", lwd = 2
+)
+legend("topright",
+  legend = c("Span = 0.2", "Span = 0.5"),
+  col = c("red", "blue"), lty = 1, lwd = 2, cex = 0.8
+)
+```
+
+The smaller 0.2 span follows local bumps but is noisier, while 0.5 smooths the trend into a gentler curve.
+
+\newpage
+
+```{r gams}
+gam1 <- lm(wage ~ ns(year, 4) + ns(age, 5) + education, data = Wage)
+gam_m3 <- gam(wage ~ s(year, 4) + s(age, 5) + education, data = Wage)
+
+par(mfrow = c(1, 2))
+plot.Gam(gam1, se = TRUE, col = "red")
+plot(gam_m3, se = TRUE, col = "blue")
+par(mfrow = c(1, 1))
+
+gam_m1 <- gam(wage ~ s(age, 5) + education, data = Wage)
+gam_m2 <- gam(wage ~ year + s(age, 5) + education, data = Wage)
+anova(gam_m1, gam_m2, gam_m3, test = "F")
+summary(gam_m3)
+```
+
+The GAM plots and ANOVA indicate that age needs a nonlinear basis, education is strongly stratified, and year is adequately modeled linearly.
+
+\newpage
+
+## Chapter 8 Lab: Tree-Based Methods
+
+### Classification Trees with Carseats Data
+
+```{r classification-tree}
+data("Carseats")
+High <- factor(ifelse(Carseats$Sales <= 8, "No", "Yes"))
+Carseats <- data.frame(Carseats, High)
+
+set.seed(2)
+train_idx <- sample(1:nrow(Carseats), 200)
+Carseats.test <- Carseats[-train_idx, ]
+High.test <- High[-train_idx]
+
+tree_carseats <- tree(High ~ . - Sales, Carseats, subset = train_idx)
+summary(tree_carseats)
+
+plot(tree_carseats)
+text(tree_carseats, pretty = 0)
+
+tree_pred <- predict(tree_carseats, Carseats.test, type = "class")
+table(tree_pred, High.test)
+mean(tree_pred == High.test)
+```
+
+The full tree leans heavily on `ShelveLoc`, `Price`, and `Income`, delivering about 77% accuracy on the held-out stores.
+
+\newpage
+
+```{r pruning}
+set.seed(7)
+cv_carseats <- cv.tree(tree_carseats, FUN = prune.misclass)
+plot(cv_carseats$size, cv_carseats$dev, type = "b",
+  main = "CV Misclassification vs. Tree Size"
+)
+
+prune_carseats <- prune.misclass(tree_carseats, best = 9)
+plot(prune_carseats)
+text(prune_carseats, pretty = 0)
+
+prune_pred <- predict(prune_carseats, Carseats.test, type = "class")
+table(prune_pred, High.test)
+mean(prune_pred == High.test)
+```
+
+Pruning to nine leaves simplifies interpretation and nudges the accuracy upward, hinting that the deeper tree was overfitting noise.
+
+\newpage
+
+### Regression Trees with Boston Data
+
+```{r regression-tree}
+data("Boston")
+set.seed(1)
+train_boston <- sample(1:nrow(Boston), nrow(Boston) / 2)
+
+tree_boston <- tree(medv ~ ., Boston, subset = train_boston)
+summary(tree_boston)
+
+plot(tree_boston)
+text(tree_boston, pretty = 0)
+
+yhat_tree <- predict(tree_boston, newdata = Boston[-train_boston, ])
+boston_test <- Boston[-train_boston, "medv"]
+mean((yhat_tree - boston_test)^2)
+```
+
+`rm` and `lstat` dominate the splits, yet the single tree’s test MSE remains about 35, motivating heavier-duty ensembles.
+
+\newpage
+
+### Bagging and Random Forests
+
+```{r bagging-rf}
+set.seed(1)
+bag_boston <- randomForest(medv ~ ., data = Boston,
+  subset = train_boston, mtry = 12, importance = TRUE
+)
+yhat_bag <- predict(bag_boston, newdata = Boston[-train_boston, ])
+bag_mse <- mean((yhat_bag - boston_test)^2)
+
+rf_boston <- randomForest(medv ~ ., data = Boston,
+  subset = train_boston, mtry = 6, importance = TRUE
+)
+yhat_rf <- predict(rf_boston, newdata = Boston[-train_boston, ])
+rf_mse <- mean((yhat_rf - boston_test)^2)
+
+bag_mse
+rf_mse
+importance(rf_boston)
+```
+
+Bagging slashes error into the mid-20s, random forests drive it closer to 20, and importance scores keep `rm` and `lstat` at the top of the list.
+
+\newpage
+
+### Boosting
+
+```{r boosting}
+set.seed(1)
+boost_boston <- gbm(medv ~ ., data = Boston[train_boston, ],
+  distribution = "gaussian", n.trees = 5000,
+  interaction.depth = 4
+)
+summary(boost_boston)
+
+yhat_boost <- predict(boost_boston,
+  newdata = Boston[-train_boston, ],
+  n.trees = 5000
+)
+mean((yhat_boost - boston_test)^2)
+```
+
+Boosting improves the fit slightly more and the partial dependence plots highlight the monotone impact of room count and socioeconomic status.
+
+\newpage
+
+### Bayesian Additive Regression Trees
+
+```{r bart}
+x <- Boston[, 1:12]
+y <- Boston[, "medv"]
+xtrain <- x[train_boston, ]
+ytrain <- y[train_boston]
+xtest <- x[-train_boston, ]
+ytest <- y[-train_boston]
+
+set.seed(1)
+bart_fit <- gbart(xtrain, ytrain, x.test = xtest)
+yhat_bart <- bart_fit$yhat.test.mean
+
+mean((ytest - yhat_bart)^2)
+bart_fit$varcount.mean
+```
+
+BART attains the lowest test MSE in this run and frequently splits on `nox`, `lstat`, and `tax`, echoing the other ensemble diagnostics.
+
+\newpage

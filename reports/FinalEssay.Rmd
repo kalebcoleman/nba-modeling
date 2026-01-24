@@ -1,0 +1,254 @@
+---
+title: "Leakage-Aware Modeling of NBA Game Outcomes Using Rolling Performance Metrics"
+author: "Kaleb Coleman"
+output:
+  pdf_document:
+    toc: false
+    number_sections: false
+header-includes:
+  - \usepackage{float}
+fontsize: 11pt
+geometry: margin=1in
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 6.5,
+  fig.height = 4,
+  fig.pos = "H"
+)
+required_pkgs <- c("dplyr", "ggplot2", "tidyr", "readr", "scales", "magrittr", "pROC")
+for (pkg in required_pkgs) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+  library(pkg, character.only = TRUE)
+}
+if (requireNamespace("broom", quietly = TRUE)) library(broom)
+if (requireNamespace("glmnet", quietly = TRUE)) library(glmnet)
+if (requireNamespace("randomForest", quietly = TRUE)) library(randomForest)
+
+if (file.exists("../data/nba_games_modeling.RData")) {
+  load("../data/nba_games_modeling.RData")
+} else {
+  stop("../data/nba_games_modeling.RData not found. Run R/AdvancedStats.R first.")
+}
+```
+
+# Introduction
+
+NBA home-court advantage varies across seasons, and single-game box scores are often too noisy to distinguish true team form from short-term randomness. This project uses NBA game data as a realistic setting to practice end-to-end statistical modeling and data engineering, with an emphasis on feature construction, leakage control, and model evaluation. Starting from raw team box score data, I construct pre-game rolling performance metrics that summarize only prior information available before each game.
+This problem mirrors real-world forecasting settings where only historical information is available at decision time, and improper feature construction can overstate performance.
+
+Using regular-season NBA data from 2002–2025, pulled via `hoopR::load_nba_team_box`, I align home and away team rows at the game level and build possession-based rolling features over 3-, 5-, and 10-game windows. These rolling metrics include net rating, effective field goal percentage, turnover percentage, and rebounding measures. All features are explicitly lagged to ensure that no post-game information leaks into the predictors.
+
+The analysis focuses on two core questions: (1) which rolling matchup differentials (home minus away) are most strongly associated with the probability that the home team wins, and (2) how much predictive improvement these rolling metrics provide beyond a majority-class baseline. To address these questions, I fit one interpretable inferential model—a logistic regression with estimated odds ratios and confidence intervals—and a set of penalized predictive models using ridge and elastic net regression applied to the full rolling feature set. Model performance is evaluated using a final-season holdout, with resampling results summarized to assess stability rather than relying on a single train–test split.
+
+All figures and tables correspond directly to the modeling pipeline, with attention to data coverage, missingness arising from early-season games, and the construction of rolling windows. The goal is not to maximize predictive accuracy, but to demonstrate principled feature engineering and evaluation in a time-ordered sports analytics setting.
+
+# Data Evaluation (Materials)
+## Data source and scope
+Team box scores are pulled directly from the NBA Stats API via the `hoopR` package (`hoopR::load_nba_team_box`). I restrict to regular-season games (season_type = 2) across 2002–2025, keep only team rows with valid NBA IDs (<= 30), and recode home/away indicators so each observation represents a paired home–away matchup at the game level. Basic renaming makes the raw box-score columns consistent before pairing opponents for possession and efficiency calculations.
+
+## Variables, types, and descriptions
+```{r variable-table, results='asis', echo=FALSE}
+games_meta <- tibble::tibble(
+  Dataset = c("Raw team box (team_box_raw)", "Modeling table (games_combined)"),
+  Rows = scales::comma(c(nrow(team_box_raw), nrow(games_combined))),
+  Columns = c(ncol(team_box_raw), ncol(games_combined)),
+  Seasons = c(paste0(min(team_box_raw$season), "-", max(team_box_raw$season)),
+              paste0(min(games_combined$season), "-", max(games_combined$season)))
+)
+
+var_types <- tibble::tibble(
+  Name = c("home_win",
+           "matchup_net_roll3", "matchup_net_roll5", "matchup_net_roll10",
+           "matchup_ortg_drtg_roll5", "efg_roll5_diff",
+           "orb_roll5_diff", "orb_roll5_ratio",
+           "tov_roll5_diff", "tov_roll5_ratio",
+           "Elo_Diff_season", "Elo_Diff_alltime"),
+  Description = c("1 if home team wins, 0 otherwise",
+                  "Home net rating roll3 minus away net rating roll3",
+                  "Home net rating roll5 minus away net rating roll5",
+                  "Home net rating roll10 minus away net rating roll10",
+                  "Home ortg roll5 minus away drtg roll5",
+                  "Home eFG% roll5 minus away eFG% roll5",
+                  "Home offensive reb% roll5 minus away offensive reb% roll5",
+                  "Ratio of home to away offensive reb% roll5",
+                  "Home turnover% roll5 minus away turnover% roll5",
+                  "Ratio of home to away turnover% roll5",
+                  "Season-reset Elo differential (home minus away)",
+                  "All-time Elo differential (home minus away)"),
+  Type = c("binary",
+           rep("numeric", 11))
+)
+
+knitr::kable(games_meta, caption = "Row/column counts and season coverage.", booktabs = TRUE)
+knitr::kable(var_types, caption = "Key modeling variables with descriptions and types", booktabs = TRUE)
+```
+The coverage table summarizes how many rows/columns are in the raw team box scores versus the modeling table and which seasons are included. The variable table lists the core predictors and their types. All matchup variables are constructed using only lagged team information available prior to the game date.
+
+## Missingness and handling of early-season games
+Lagged rolling features are undefined for each team’s first game of a season, so the only missing values come from those initial rows. I dropped those rows for modeling to avoid inventing prior performance; imputation was not pursued because these missing values arise from the absence of prior games rather than measurement error.
+```{r missingness, results='asis', echo=FALSE}
+missing_counts <- games_combined %>%
+  summarise(across(matches("roll(3|5|10)$"), ~sum(is.na(.)))) %>%
+  pivot_longer(everything(), names_to = "Feature", values_to = "Missing") %>%
+  summarise(`Min missing` = min(Missing), `Max missing` = max(Missing))
+
+knitr::kable(missing_counts,
+             caption = "Rolling features have missing values only for first-team games; these rows were dropped.",
+             booktabs = TRUE)
+```
+This missingness summary confirms that NA values appear only because rolling windows are undefined for each team’s first game of a season.
+
+# Methods (Modeling)
+## Data engineering pipeline
+Raw team box scores were cleaned and aligned so each game has a home and away row with consistent columns. I derived possession-based efficiencies and created rolling windows that are lagged by one game to avoid leakage. Matchup features are computed as home minus away (or ratios) to reflect the pre-game edge. Early-season rows with undefined rolling windows were removed to keep the feature set fully observed for modeling.
+
+The pipeline is implemented in `R/AdvancedStats.R` via `run_advanced_stats()`, which pulls the API data, constructs rolling features, and saves the modeling objects to `data/nba_games_modeling.RData`. This keeps the feature engineering step reproducible and separate from modeling.
+
+## Software and packages
+Core data manipulation and plotting used `dplyr`, `tidyr`, `readr`, `magrittr`, and `ggplot2`. Rolling feature creation and scaling relied on base R and `scales`, while model fitting used `glm` (base R), `glmnet` (ridge/elastic net), and `pROC` (AUC). Results tables were formatted with `broom` and `knitr`. 
+
+## Inferential model
+I fit a logistic regression on pre-game matchup differentials - net rating, eFG%, and turnover% - using five-game lagged rolling averages for both teams. Logistic regression provides a natural probabilistic interpretation for binary outcomes while remaining interpretable under correlated predictors. Coefficients were translated into odds ratios with 95% confidence intervals. Because the rolling windows are lagged (no current-game data), predictors stay free of leakage. Feature distributions by win/loss were examined descriptively to confirm expected directional relationships prior to model fitting.
+
+## Predictive models and evaluation
+Predictive benchmarking used ridge logistic regression and elastic net (alpha tuned over a small grid) on the rolling feature set. Models trained on seasons up to 2024 and evaluated on 2025 as a holdout. Cross-validation was used only for model selection and stability assessment, while all reported performance is based on the untouched final-season holdout. Elo-style ratings were tested as an add-on but did not materially change accuracy, so they are not emphasized in the results.
+
+I also bootstrapped holdout accuracy for the ridge model at the default 0.5 cutoff and at a tuned threshold. This provides a sense of variability around the holdout estimate and whether a different classification threshold meaningfully improves accuracy. Bootstrapping emphasizes uncertainty in single-season evaluation rather than overstating point estimates.
+
+\newpage
+
+# Analysis Results
+## Model estimates and predictive performance
+```{r model-metrics, results='asis', echo=FALSE}
+set.seed(42)
+
+if (!file.exists("../outputs/predictive_results.rds")) {
+  stop("Run R/PredictiveModels.R to generate outputs/predictive_results.rds before knitting.")
+}
+
+pred_res <- readRDS("../outputs/predictive_results.rds")
+metrics <- pred_res$metrics
+calib <- pred_res$calib
+yte <- pred_res$yte
+ridge_prob <- pred_res$ridge_prob
+holdout_season <- pred_res$holdout_season
+
+metrics_table <- metrics %>%
+  arrange(desc(auc)) %>%
+  transmute(
+    `Feature set` = feature_set,
+    Model = model,
+    Accuracy = accuracy,
+    AUC = auc
+  )
+
+knitr::kable(metrics_table,
+             caption = paste0("Holdout-season performance (train: seasons < ", holdout_season, "; test: ", holdout_season, ")."),
+             booktabs = TRUE, digits = 3)
+```
+The table compares only the lean inferential logistic and two penalized models on the full feature set. The inferential logistic row (feature set = inferential) has holdout accuracy around 0.64 - within a few points of the full ridge/elastic - so it is competitive while remaining interpretable. Ridge and elastic net use all rolling features (including Elo if present) to maximize predictive power. Accuracy and AUC together show modest lift over the baseline, with ridge and elastic essentially tied.
+
+```{r cv-summary, results='asis', echo=FALSE}
+if (file.exists("../outputs/predictive_cv_metrics.csv")) {
+  cv_tbl <- readr::read_csv("../outputs/predictive_cv_metrics.csv", show_col_types = FALSE) %>%
+    arrange(desc(cv_auc))
+  knitr::kable(cv_tbl, caption = "Cross-validation summary (training seasons only).", booktabs = TRUE, digits = 3)
+}
+```
+
+```{r bootstrap-summary, results='asis', echo=FALSE}
+if (file.exists("../outputs/threshold_bootstrap_summary.csv")) {
+  boot_tbl <- readr::read_csv("../outputs/threshold_bootstrap_summary.csv", show_col_types = FALSE)
+  knitr::kable(boot_tbl, caption = "Bootstrapped holdout accuracy (ridge model).", booktabs = TRUE, digits = 3)
+}
+```
+
+Model performance is summarized numerically above; a ROC diagnostic is shown in the Supplementary Figures section. The ROC curve sits only modestly above the diagonal, indicating limited but real discrimination (consistent with mid-0.60s AUC). This reinforces that the model captures signal but remains far from highly confident classification on single-game outcomes.
+
+The bootstrap results show a best tuned-threshold holdout accuracy around 0.67, which is a modest but consistent lift over the default 0.5 cutoff.
+Although the absolute improvement over the majority baseline is modest, the lift is meaningful given the inherent randomness of single NBA games and the strict pre-game information constraint.
+
+\newpage
+
+## Odds ratios for matchup differentials
+```{r odds-ratios, results='asis', echo=FALSE}
+if (!exists("logit_fit")) {
+  if (file.exists("../outputs/logit_fit.rds")) {
+    logit_fit <- readRDS("../outputs/logit_fit.rds")
+  } else {
+    infer_feats <- c("matchup_net_roll5", "matchup_ortg_drtg_roll5",
+                     "orb_roll5_diff", "tov_roll5_diff",
+                     "efg_roll5_diff")
+    games_model <- games_combined %>%
+      mutate(efg_roll5_diff = home_efg_roll5 - away_efg_roll5) %>%
+      mutate(season_start = if (is.numeric(season)) as.integer(season) else as.integer(substr(season, 1, 4))) %>%
+      select(home_win, season_start, all_of(infer_feats)) %>%
+      mutate(across(all_of(infer_feats), as.numeric)) %>%
+      filter(if_all(all_of(infer_feats), ~ is.finite(.)))
+    logit_fit <- glm(home_win ~ . - season_start,
+                     data = filter(games_model, season_start < max(season_start, na.rm = TRUE)),
+                     family = binomial())
+  }
+}
+
+or_table <- broom::tidy(logit_fit, conf.int = TRUE, exponentiate = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  transmute(
+    Term = term,
+    `Odds ratio` = estimate,
+    `CI low` = conf.low,
+    `CI high` = conf.high,
+    `p-value` = p.value
+  )
+
+knitr::kable(or_table, caption = "Logistic regression odds ratios for rolling matchup features.", booktabs = TRUE, digits = 3)
+```
+Net rating differentials exhibit the strongest and most precisely estimated association with home-win probability among the examined features; turnover differential is in the expected direction but smaller.
+
+# Discussion
+The five-game matchup differentials (net rating, eFG%, turnover%) behaved as expected: better recent shooting and efficiency increased home-win odds, and sloppy play eroded them. These findings address the first research question by showing that recent efficiency-based differentials, particularly net rating, are most strongly associated with win probability. The lean logistic nearly matched the penalized models, indicating most signal was captured by a small set of five-game matchup features. Ridge and elastic net added a slight lift and smoother calibration but still achieved mid-0.60s AUC, consistent with noisy single-game outcomes. The relatively modest performance highlights how easily leakage could inflate results if lagging were not enforced, reinforcing the importance of time-aware feature construction. Limitations: early-season NAs were dropped, not imputed; no rest/travel controls; the simple Elo calculation was noisy and offered little gain; cross-validation summarized model performance on training seasons while the final holdout remained the primary metric.
+
+# Conclusions
+Five-game rolling matchup differentials provided the best balance of recency and stability. Net rating and offensive rebounding were the clearest drivers of home-win odds, with turnover differential in the expected direction. Penalized models improved modestly over the majority baseline but remained bounded by game-level volatility, while the lean logistic stayed interpretable and close in accuracy. Future work could add rest/travel effects, richer interactions, and better probability calibration, and should revisit window length as new seasons arrive.
+
+# Supplementary Figures
+```{r roc-plot, echo=FALSE, fig.cap="ROC curve for ridge logistic model (holdout season)."}
+roc_obj <- pROC::roc(response = yte, predictor = ridge_prob, quiet = TRUE)
+roc_df <- tibble::tibble(
+  fpr = 1 - roc_obj$specificities,
+  tpr = roc_obj$sensitivities
+)
+
+ggplot(roc_df, aes(x = fpr, y = tpr)) +
+  geom_line(color = "firebrick", linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") +
+  labs(
+    title = "ROC Curve (Holdout Season)",
+    x = "False Positive Rate",
+    y = "True Positive Rate"
+  ) +
+  theme_minimal(base_size = 11)
+```
+
+# Citations
+- SportsDataverse. (2024). *hoopR: Access to NBA data from stats.nba.com* (R package). https://CRAN.R-project.org/package=hoopR
+- National Basketball Association. (2024). *NBA Stats API*. https://stats.nba.com/
+- James, G., Witten, D., Hastie, T., & Tibshirani, R. (2021). *An introduction to statistical learning: With applications in R* (2nd ed.). Springer. https://www.statlearning.com/
+
+# Appendix: Code Listings
+```{r code-listings, echo=FALSE, results='asis'}
+code_files <- list.files("../R", pattern = "\\.R$", full.names = TRUE)
+for (file_path in code_files) {
+  cat("\n## ", basename(file_path), "\n\n", sep = "")
+  cat("```r\n")
+  cat(readLines(file_path), sep = "\n")
+  cat("\n```\n")
+}
+```
