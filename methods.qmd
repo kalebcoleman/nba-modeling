@@ -1,0 +1,70 @@
+---
+title: "Methods"
+---
+
+## Pipeline
+
+```{mermaid}
+flowchart LR
+  A[hoopR box scores<br/>2002-2026] --> C[per-game efficiency]
+  N[nba-data: ESPN<br/>current season + schedule] --> C
+  C --> R[lagged rolling means<br/>3, 5, 10 games]
+  C --> E[pre-game Elo]
+  R --> G[game-level features]
+  E --> G
+  G --> V[rolling-origin validation<br/>2015-2025]
+  G --> H[holdout 2026]
+  G --> L[live 2027<br/>logged before tip-off]
+```
+
+The analysis is a [`targets`](https://docs.ropensci.org/targets/) pipeline
+with packages pinned by `renv`. `targets::tar_make()` rebuilds every table,
+figure, and the paper. Current-season data comes from
+[nba-data](https://github.com/kalebcoleman/nba-data), an R package that
+collects, validates, and stores ESPN game data.
+
+## Keeping the future out
+
+- **Features use earlier games only.** A team's rolling value for game *t* is
+  the mean of its games *t−w* to *t−1* in the same season. Elo ratings are
+  recorded before each game's result is applied.
+- **This is tested.** A test changes the result of one mid-season game and
+  checks that no feature for that game, or any earlier game, changes, while
+  later games do.
+- **Evaluation runs forward in time.** Each validation season is predicted by
+  a model trained on all earlier seasons. The classification threshold comes
+  from the last validation season, not the test season. Penalties are tuned
+  with folds made of whole seasons.
+- **The 2025-26 test season is not used to choose between models.** The live
+  2026-27 season is the only fully untouched test.
+
+## Adding a model
+
+Models live in `R/model_registry.R`. A model is a function that returns its
+name, its feature set, and a fit function:
+
+```r
+model_random_forest <- function(games) {
+  spec <- parsnip::rand_forest(trees = 500, min_n = 50) |>
+    parsnip::set_engine("ranger") |>
+    parsnip::set_mode("classification")
+  list(
+    name = "Random forest: rolling + Elo",
+    features = feature_sets(games)$rolling_elo,
+    fit = fit_parsnip(spec)
+  )
+}
+```
+
+Add `"random_forest"` to `MODEL_IDS` and run `targets::tar_make()`. Only the
+new model is fitted; it appears in every table and figure, and the live job
+starts logging it the next day.
+
+## Adding a feature
+
+Features are built in `R/features.R`. Add the new column in `build_games()`
+using only earlier games (for example with `lagged_mean()`), add it to a
+feature set in `feature_sets()`, and run the tests. The leakage test in
+`tests/testthat/test-features.R` checks every column whose name contains
+`roll`, `Elo`, or `matchup`, or ends in `_diff` or `_ratio`. Name new features
+to match, or add them to that pattern.

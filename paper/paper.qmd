@@ -4,6 +4,7 @@ subtitle: "Revised version"
 author: "Kaleb Coleman"
 date: last-modified
 date-format: "MMMM YYYY"
+setup: "`r source('paper/setup.R'); ''`"
 abstract: |
   I predict whether the home team wins an NBA regular-season game using only
   information available before tip-off: lagged rolling means of team box-score
@@ -21,6 +22,12 @@ abstract: |
   future and past seasons, a classification threshold tuned on the test
   season, and an incomplete data pull.
 format:
+  html:
+    toc: true
+    number-sections: true
+    other-links:
+      - text: PDF version
+        href: paper.pdf
   pdf:
     documentclass: article
     papersize: letter
@@ -43,38 +50,15 @@ execute:
 ---
 
 ```{r setup}
-library(targets)
-library(dplyr)
-
+# Loaded by setup.R from the YAML header; listed here so targets tracks them.
 tar_load(c(
   coverage, validation_summary, validation_by_season, holdout_metrics,
   holdout_bootstrap, odds_lean, odds_lean_elo, frame
 ))
-# Registers the figures as dependencies of the paper target.
 invisible(tar_read(fig_validation))
 invisible(tar_read(fig_calibration))
-
-pct <- function(x) sprintf("%.1f%%", 100 * x)
-f3 <- function(x) sprintf("%.3f", x)
-h <- function(m) filter(holdout_metrics, model == m)
-b <- function(m) filter(holdout_bootstrap, model == m)
-v <- function(m) filter(validation_summary, model == m)
-vs <- function(m, s) filter(validation_by_season, model == m, season == s)
-
-model_order <- c(
-  "Majority (home win rate)", "Logistic: Elo only", "Logistic: lean rolling",
-  "Ridge: rolling", "Ridge: rolling + Elo", "Elastic net: rolling + Elo",
-  "Gradient boosting: rolling + Elo", "Neural net (MLP): rolling + Elo"
-)
-holdout_n <- h("Ridge: rolling + Elo")$n
-home_rate_train <- mean(frame$home_win[frame$season < 2026])
-
-auc_wide <- validation_by_season |>
-  select(model, season, auc) |>
-  tidyr::pivot_wider(names_from = model, values_from = auc)
-n_val <- nrow(auc_wide)
-n_full_beats_elo <- sum(auc_wide[["Ridge: rolling + Elo"]] > auc_wide[["Logistic: Elo only"]])
-n_elo_beats_roll <- sum(auc_wide[["Logistic: Elo only"]] > auc_wide[["Ridge: rolling"]])
+invisible(tar_read(fig_model_comparison))
+invisible(tar_read(fig_home_advantage))
 ```
 
 # Introduction
@@ -115,7 +99,11 @@ knitr::kable(
 
 After dropping each team's first game of every season (where no rolling
 history exists), `r format(nrow(frame), big.mark = ",")` games remain. The home
-team won `r pct(home_rate_train)` of games from 2002 to 2025.
+team won `r pct(home_rate_train)` of games from 2002 to 2025, but that share
+has fallen over time (@fig-home), which matters for any model trained on all
+past seasons.
+
+![Share of regular-season games won by the home team.](../figures/home_advantage.png){#fig-home width=90%}
 
 # Features
 
@@ -225,7 +213,9 @@ holdout_metrics |>
   knitr::kable(booktabs = TRUE, align = "lrrrrrr")
 ```
 
-On the holdout, ridge with rolling features and Elo predicted
+![Holdout AUC by model with 95% bootstrap intervals. The dashed line marks the Elo-only model.](../figures/model_comparison.png){#fig-models width=95%}
+
+On the holdout (@fig-models), ridge with rolling features and Elo predicted
 `r pct(h("Ridge: rolling + Elo")$accuracy)` of games correctly (AUC
 `r f3(h("Ridge: rolling + Elo")$auc)`), compared with
 `r pct(h("Majority (home win rate)")$accuracy)` for always picking the home

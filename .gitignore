@@ -5,7 +5,6 @@
 .DS_Store
 
 # Project outputs and large artifacts
-outputs/
 data/*.RData
 data/*.rds
 hw/
@@ -17,3 +16,8 @@ _targets/
 paper/*_files/
 paper/.quarto/
 data/live/
+_site/
+.quarto/
+
+/.quarto/
+**/*.quarto_ipynb

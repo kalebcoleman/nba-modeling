@@ -1,0 +1,78 @@
+---
+title: "Live 2026-27 season"
+execute:
+  freeze: false
+---
+
+```{r}
+library(dplyr)
+for (f in c("R/figures.R")) source(f)
+season <- 2027
+log_path <- sprintf("live/predictions_%d.csv", season)
+scored_path <- sprintf("live/scored_%d.csv", season)
+log <- if (file.exists(log_path)) readr::read_csv(log_path, show_col_types = FALSE) else NULL
+scored <- if (file.exists(scored_path)) readr::read_csv(scored_path, show_col_types = FALSE) else tibble::tibble()
+updated <- if (!is.null(log)) max(log$predicted_at) else NA
+```
+
+Every morning a scheduled job updates the season's data, fits the frozen
+models (trained on 2001-02 through 2025-26), and logs a home-win probability
+for each of the day's games **before tip-off**. The log is append-only and is
+committed by the scheduled job, so the repository's history and the job's run
+logs record when each prediction was added. Once games are final, they are
+scored here.
+
+A team's first game of the season has no rolling history, so those games are
+predicted with the Elo-only model for every model and marked as fallbacks.
+
+Last prediction logged: `r updated` (UTC).
+
+## Accuracy to date
+
+```{r}
+if (nrow(scored) == 0) {
+  cat("No logged games have finished yet.\n")
+} else {
+  scored |>
+    group_by(model) |>
+    summarise(
+      Games = n(),
+      Accuracy = sprintf("%.1f%%", 100 * mean(correct)),
+      Brier = sprintf("%.3f", mean((prob_home - home_win)^2)),
+      .groups = "drop"
+    ) |>
+    arrange(desc(Accuracy)) |>
+    rename(Model = model) |>
+    knitr::kable(align = "lrrr")
+}
+```
+
+```{r}
+#| fig-height: 4
+if (nrow(scored) > 0 && length(unique(scored$game_date)) > 1) {
+  plot_live_accuracy(scored, c("Logistic: Elo only", "Ridge: rolling + Elo", "Majority (home win rate)"))
+}
+```
+
+## Latest predictions
+
+```{r}
+if (!is.null(log)) {
+  latest <- max(log$game_date)
+  log |>
+    filter(game_date == latest, model %in% c("Ridge: rolling + Elo", "Logistic: Elo only")) |>
+    select(home, away, model, prob_home, fallback) |>
+    tidyr::pivot_wider(names_from = model, values_from = prob_home) |>
+    transmute(
+      Game = paste(away, "at", home),
+      `Ridge + Elo: P(home win)` = sprintf("%.0f%%", 100 * `Ridge: rolling + Elo`),
+      `Elo only` = sprintf("%.0f%%", 100 * `Logistic: Elo only`),
+      Pick = ifelse(`Ridge: rolling + Elo` >= 0.5, home, away),
+      Fallback = ifelse(fallback, "yes", "")
+    ) |>
+    knitr::kable(caption = paste("Games on", latest), align = "lrrrc")
+}
+```
+
+The full log, with every model's probability, is
+[`live/predictions_2027.csv`](https://github.com/kalebcoleman/nba-modeling/blob/main/live/predictions_2027.csv).

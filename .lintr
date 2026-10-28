@@ -5,4 +5,4 @@ linters: linters_with_defaults(
     indentation_linter = NULL,
     return_linter = NULL
   )
-exclusions: list("renv", "_targets", "reports", "proposal", "hw", "paper")
+exclusions: list("renv", "_targets", "reports", "proposal", "hw", "paper", "methods.qmd", "_freeze", "_site")

@@ -1,0 +1,66 @@
+---
+title: "Predicting NBA home wins without leaking the future"
+subtitle: "Rolling team efficiency and Elo, evaluated in time order"
+toc: false
+---
+
+```{r}
+library(dplyr)
+holdout <- readr::read_csv("outputs/holdout_metrics.csv", show_col_types = FALSE)
+boot <- readr::read_csv("outputs/holdout_bootstrap.csv", show_col_types = FALSE)
+h <- function(m) filter(holdout, model == m)
+pct <- function(x) sprintf("%.1f%%", 100 * x)
+best <- "Ridge: rolling + Elo"
+```
+
+This project predicts whether the home team wins an NBA regular-season game,
+using only information available before tip-off. Models are trained on
+2001-02 through 2024-25 and tested once on the 2025-26 season
+(`r format(h(best)$n, big.mark = ",")` games). Predictions for the current
+season are logged daily before each game; see [Live 2026-27](live.qmd).
+
+::: {.grid}
+::: {.g-col-12 .g-col-md-4}
+<div class="lead-number">`r pct(h(best)$accuracy)`</div>
+<div class="lead-label">Holdout accuracy, ridge with rolling features + Elo</div>
+:::
+::: {.g-col-12 .g-col-md-4}
+<div class="lead-number">`r pct(h("Logistic: Elo only")$accuracy)`</div>
+<div class="lead-label">Elo ratings alone</div>
+:::
+::: {.g-col-12 .g-col-md-4}
+<div class="lead-number">`r pct(h("Majority (home win rate)")$accuracy)`</div>
+<div class="lead-label">Always picking the home team</div>
+:::
+:::
+
+The full model beats always picking the home team by a wide margin, but Elo
+ratings alone get most of the way there. The 95% bootstrap interval for the
+AUC gain from adding rolling features to Elo is
+`r sprintf("%.3f to %.3f", boot$auc_diff_vs_ref_low[boot$model == best], boot$auc_diff_vs_ref_high[boot$model == best])`,
+which includes zero.
+
+![](figures/model_comparison.png)
+
+![](figures/validation_auc_by_season.png)
+
+![](figures/home_advantage.png)
+
+## All models on the holdout
+
+```{r}
+holdout |>
+  left_join(boot, by = "model") |>
+  arrange(desc(auc)) |>
+  transmute(
+    Model = model,
+    Accuracy = sprintf("%.3f", accuracy),
+    `Accuracy 95% CI` = sprintf("%.3f-%.3f", accuracy_low, accuracy_high),
+    AUC = ifelse(is.na(auc), "-", sprintf("%.3f", auc)),
+    Brier = sprintf("%.3f", brier)
+  ) |>
+  knitr::kable(align = "lrrrr")
+```
+
+Code and data pipeline: [nba-modeling](https://github.com/kalebcoleman/nba-modeling)
+and [nba-data](https://github.com/kalebcoleman/nba-data).

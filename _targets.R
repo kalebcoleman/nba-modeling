@@ -106,5 +106,17 @@ list(
     format = "file"
   ),
 
-  tar_quarto(paper, "paper/paper.qmd")
+  tar_target(
+    fig_home_advantage,
+    save_plot(plot_home_advantage(games), "figures/home_advantage.png", height = 3.5),
+    format = "file"
+  ),
+  tar_target(
+    fig_model_comparison,
+    save_plot(plot_model_comparison(holdout_metrics, holdout_bootstrap), "figures/model_comparison.png", height = 3.5),
+    format = "file"
+  ),
+
+  # Renders the site (index, live, methods) and the paper (HTML and PDF).
+  tar_quarto(site, path = ".")
 )
