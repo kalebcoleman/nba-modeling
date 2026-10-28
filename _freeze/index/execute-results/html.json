@@ -1,0 +1,15 @@
+{
+  "hash": "4d6ee1bf3cd7363a7d290d34ca028210",
+  "result": {
+    "engine": "knitr",
+    "markdown": "---\ntitle: \"Predicting NBA home wins without leaking the future\"\nsubtitle: \"Rolling team efficiency and Elo, evaluated in time order\"\ntoc: false\n---\n\n\n::: {.cell}\n\n:::\n\n\nThis project predicts whether the home team wins an NBA regular-season game,\nusing only information available before tip-off. Models are trained on\n2001-02 through 2024-25 and tested once on the 2025-26 season\n(1,215 games). Predictions for the current\nseason are logged daily before each game; see [Live 2026-27](live.qmd).\n\n::: {.grid}\n::: {.g-col-12 .g-col-md-4}\n<div class=\"lead-number\">68.6%</div>\n<div class=\"lead-label\">Holdout accuracy, ridge with rolling features + Elo</div>\n:::\n::: {.g-col-12 .g-col-md-4}\n<div class=\"lead-number\">67.9%</div>\n<div class=\"lead-label\">Elo ratings alone</div>\n:::\n::: {.g-col-12 .g-col-md-4}\n<div class=\"lead-number\">55.4%</div>\n<div class=\"lead-label\">Always picking the home team</div>\n:::\n:::\n\nThe full model beats always picking the home team by a wide margin, but Elo\nratings alone get most of the way there. The 95% bootstrap interval for the\nAUC gain from adding rolling features to Elo is\n-0.002 to 0.015,\nwhich includes zero.\n\n![](figures/model_comparison.png)\n\n![](figures/validation_auc_by_season.png)\n\n![](figures/home_advantage.png)\n\n## All models on the holdout\n\n\n::: {.cell}\n::: {.cell-output-display}\n\n\n|Model                            | Accuracy| Accuracy 95% CI|   AUC| Brier|\n|:--------------------------------|--------:|---------------:|-----:|-----:|\n|Ridge: rolling + Elo             |    0.686|     0.662-0.712| 0.738| 0.205|\n|Elastic net: rolling + Elo       |    0.686|     0.660-0.712| 0.737| 0.205|\n|Gradient boosting: rolling + Elo |    0.682|     0.656-0.709| 0.733| 0.207|\n|Logistic: Elo only               |    0.679|     0.651-0.706| 0.731| 0.208|\n|Ridge: rolling                   |    0.664|     0.638-0.691| 0.712| 0.214|\n|Neural net (MLP): rolling + Elo  |    0.653|     0.627-0.679| 0.709| 0.222|\n|Logistic: lean rolling           |    0.642|     0.615-0.670| 0.683| 0.223|\n|Majority (home win rate)         |    0.554|     0.526-0.583|     -| 0.248|\n\n\n:::\n:::\n\n\nCode and data pipeline: [nba-modeling](https://github.com/kalebcoleman/nba-modeling)\nand [nba-data](https://github.com/kalebcoleman/nba-data).\n",
+    "supporting": [],
+    "filters": [
+      "rmarkdown/pagebreak.lua"
+    ],
+    "includes": {},
+    "engineDependencies": {},
+    "preserve": {},
+    "postProcess": true
+  }
+}
