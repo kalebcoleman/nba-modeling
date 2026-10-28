@@ -74,3 +74,27 @@ test_that("season-reset Elo starts every team at baseline each season", {
     dplyr::slice_min(game_date, n = 1)
   expect_true(all(firsts$Elo_H_season == 1500 & firsts$Elo_A_season == 1500))
 })
+
+test_that("games without a result get features but do not update Elo", {
+  raw <- fake_team_box()
+  last_day <- max(raw$game_date)
+  pending <- raw$game_date == last_day
+  stat_cols <- c(
+    "team_score", "field_goals_made", "field_goals_attempted", "three_point_field_goals_made",
+    "three_point_field_goals_attempted", "free_throws_made", "free_throws_attempted",
+    "offensive_rebounds", "defensive_rebounds", "total_rebounds", "assists", "steals", "blocks", "turnovers"
+  )
+  raw_pending <- raw
+  raw_pending[pending, stat_cols] <- NA
+
+  full <- build_games(raw)
+  live <- build_games(raw_pending)
+  feature_cols <- grep("roll|Elo|matchup|_diff$|_ratio$", names(full), value = TRUE)
+  ids <- full$game_id[full$game_date == last_day]
+
+  expect_true(all(is.na(live$home_win[live$game_id %in% ids])))
+  expect_equal(
+    full[full$game_id %in% ids, feature_cols],
+    live[match(full$game_id[full$game_id %in% ids], live$game_id), feature_cols]
+  )
+})

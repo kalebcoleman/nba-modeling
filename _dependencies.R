@@ -3,3 +3,5 @@
 library(quarto)
 library(lintr)
 library(visNetwork)
+library(xgboost)
+library(nnet)

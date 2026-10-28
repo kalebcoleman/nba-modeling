@@ -134,6 +134,9 @@ compute_elo <- function(games, k = 20, baseline = 1500, hfa = 100, reset_each_se
       chunk$Elo_H[i] <- ratings[h]
       chunk$Elo_A[i] <- ratings[a]
 
+      # Games without a result yet (live predictions) do not update ratings.
+      if (is.na(chunk$home_win[i])) next
+
       e_h <- 1 / (1 + 10^((ratings[a] - (ratings[h] + hfa)) / 400))
       s_h <- if (isTRUE(as.logical(chunk$home_win[i]))) 1 else 0
 
