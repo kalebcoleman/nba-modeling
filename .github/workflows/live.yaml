@@ -1,0 +1,60 @@
+name: live
+
+# Daily: update the season's data, log predictions for today's games before
+# tip-off, score finished games, and commit the prediction log.
+# 15:00 UTC is 10-11am US Eastern, before the earliest regular tip-offs.
+
+on:
+  schedule:
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: live
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      NBA_DB: data/live/nbadata.sqlite
+      NBA_RAW_DIR: data/live/raw
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries
+        run: sudo apt-get update && sudo apt-get install -y libglpk-dev
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.6.1"
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-renv@v2
+
+      # The season's raw JSON and database stay in the Actions cache, not in
+      # the repository. If the cache is gone, nba_update() rebuilds it.
+      - name: Restore season data
+        uses: actions/cache@v4
+        with:
+          path: data/live
+          key: live-data-${{ github.run_id }}
+          restore-keys: live-data-
+
+      - name: Update data and predictions
+        run: Rscript scripts/live_update.R
+
+      - name: Commit prediction log
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add live/
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Live update $(date -u +%Y-%m-%d)"
+            git push
+          fi
