@@ -57,7 +57,10 @@ if (nrow(scored) == 0) {
   n_games <- length(unique(scored$game_id))
   n_pre <- length(unique(scored$game_id[scored$source == "pre-game"]))
   cat(sprintf(
-    "%d games scored: %d backfilled, %d logged before tip-off. With this few games, accuracy can move by about %.0f percentage points either way.\n\n",
+    paste(
+      "%d games scored: %d backfilled, %d logged before tip-off.",
+      "With this few games, accuracy can move by about %.0f percentage points either way.\n\n"
+    ),
     n_games, n_games - n_pre, n_pre, 100 * 1.96 * sqrt(0.25 / n_games)
   ))
 }
