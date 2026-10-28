@@ -4,6 +4,7 @@
 
 library(targets)
 library(dplyr)
+source("R/models.R")
 
 tar_load(c(
   coverage, validation_summary, validation_by_season, holdout_metrics,
@@ -31,3 +32,5 @@ auc_wide <- validation_by_season |>
 n_val <- nrow(auc_wide)
 n_full_beats_elo <- sum(auc_wide[["Ridge: rolling + Elo"]] > auc_wide[["Logistic: Elo only"]])
 n_elo_beats_roll <- sum(auc_wide[["Logistic: Elo only"]] > auc_wide[["Ridge: rolling"]])
+
+n_features <- length(feature_sets(frame)$rolling_elo)

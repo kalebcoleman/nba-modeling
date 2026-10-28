@@ -236,10 +236,10 @@ boosting reached an AUC of `r f3(h("Gradient boosting: rolling + Elo")$auc)`
 on the holdout, close to Elo only, and the untuned neural net reached
 `r f3(h("Neural net (MLP): rolling + Elo")$auc)`, below Elo only (paired
 interval `r f3(b("Neural net (MLP): rolling + Elo")$auc_diff_vs_ref_low)` to
-`r f3(b("Neural net (MLP): rolling + Elo")$auc_diff_vs_ref_high)`). With a
-few hundred mostly correlated features and noisy outcomes, there is little
-nonlinear structure for them to find, and the neural net likely overfits
-without tuning.
+`r f3(b("Neural net (MLP): rolling + Elo")$auc_diff_vs_ref_high)`). With
+`r n_features` mostly correlated features and noisy outcomes, there may be
+little nonlinear structure to find, and the untuned neural net may overfit.
+Tuning both would need nested time-ordered validation, which I did not do.
 
 Choosing the threshold on 2025 instead of using 0.5 changed holdout accuracy
 by at most `r sprintf("%.1f", 100 * max(abs(holdout_metrics$accuracy - holdout_metrics$accuracy_at_validation_threshold)))`
@@ -351,7 +351,19 @@ did not account for Elo.
 - Data comes from a third-party package. A few early seasons are missing games
   relative to the official schedule (for example, 1,224 of 1,229 in 2013), and
   missing games shift rolling windows.
-- Logistic and penalized linear models only. Tree ensembles were not compared.
+- Gradient boosting and the neural net use fixed settings and were not tuned.
+
+# Live evaluation (2026--27)
+
+The 2025--26 holdout has now been looked at, so it can no longer serve as an
+untouched test for choosing among models. The 2026--27 season is used for
+that instead. Each morning a scheduled job updates the season's data with the
+companion package `NBAData`, fits every model above on 2002--2026 with a fixed
+seed (so the models do not change during the season), and appends a
+probability for each of that day's games to a log before tip-off. A team's
+first game of the season has no rolling history, so those games use the
+Elo-only model. Results are scored as games finish and shown on the project
+site. They are not part of this paper's results.
 
 # Reproducibility
 
@@ -363,7 +375,8 @@ renv::restore()
 targets::tar_make()
 ```
 
-This rebuilds every table, figure, and this PDF from the saved data snapshot.
+This rebuilds every table, figure, the project site, and this PDF (which
+needs a LaTeX installation with biber) from the saved data snapshot.
 Deleting the snapshot pulls fresh data through hoopR. The tests run with
 `Rscript tests/testthat.R`.
 
