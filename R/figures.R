@@ -154,7 +154,7 @@ plot_calibration <- function(bins) {
     ggplot2::theme(panel.grid.major.x = ggplot2::element_line(colour = CHART$grid, linewidth = 0.3))
 }
 
-plot_live_accuracy <- function(scored, models) {
+plot_live_accuracy <- function(scored, models, pregame_start = NULL) {
   d <- scored |>
     dplyr::filter(model %in% models) |>
     dplyr::arrange(game_date) |>
@@ -167,12 +167,21 @@ plot_live_accuracy <- function(scored, models) {
     ggplot2::geom_hline(yintercept = 0.5, colour = CHART$baseline, linetype = "dashed", linewidth = 0.4) +
     ggplot2::geom_step(linewidth = 0.9) +
     end_labels(d, game_date, accuracy) +
+    (if (!is.null(pregame_start)) {
+      list(
+        ggplot2::geom_vline(xintercept = pregame_start, colour = CHART$baseline, linewidth = 0.4),
+        ggplot2::annotate(
+          "text", x = pregame_start, y = 0.32, label = " logged before tip-off from here",
+          hjust = 0, size = 3, colour = CHART$muted
+        )
+      )
+    }) +
     ggplot2::scale_colour_manual(values = MODEL_COLORS, guide = "none") +
     ggplot2::scale_y_continuous(labels = scales::label_percent(accuracy = 1), limits = c(0.3, 1)) +
     ggplot2::scale_x_date(expand = ggplot2::expansion(mult = c(0.02, 0.4))) +
     ggplot2::labs(
       title = "Live accuracy to date, 2026-27",
-      subtitle = "Cumulative share of games picked correctly; predictions logged before tip-off",
+      subtitle = "Cumulative share of games picked correctly",
       x = NULL, y = NULL
     ) +
     theme_paper()

@@ -26,8 +26,19 @@ models <- all_models(games)
 fitted <- fit_live_models(model_frame(dplyr::filter(games, season < !!season)), models)
 
 preds <- live_predict(games, schedule, fitted, models, dates = today)
-n_new <- append_prediction_log(preds, log_path)
-message(sprintf("Logged %d new predictions for %s", n_new, today))
+n_new <- append_prediction_log(preds, log_path, source = "pre-game")
+message(sprintf("Logged %d new pre-game predictions for %s", n_new, today))
+
+# Backfill finished games the log is missing (the start of the season, or a
+# day the job did not run). Rows are labeled "backfill".
+logged_ids <- if (file.exists(log_path)) readr::read_csv(log_path, show_col_types = FALSE)$game_id else integer()
+missing_dates <- unique(games$game_date[games$season == season & !is.na(games$home_win) & !games$game_id %in% logged_ids])
+if (length(missing_dates) > 0) {
+  past <- live_predict(games, schedule, fitted, models, dates = missing_dates, pending_only = FALSE)
+  past <- dplyr::filter(past, !game_id %in% logged_ids)
+  n_back <- append_prediction_log(past, log_path, source = "backfill")
+  message(sprintf("Backfilled %d predictions for %d dates", n_back, length(missing_dates)))
+}
 
 if (file.exists(log_path)) {
   log <- readr::read_csv(log_path, show_col_types = FALSE)

@@ -52,8 +52,14 @@ fit_live_models <- function(frame, models) {
 #' Games where a rolling feature is undefined (a team's first game of the
 #' season) are predicted with the Elo-only model for every model, and
 #' flagged with `fallback = TRUE`.
-live_predict <- function(games, schedule, fitted, models, dates) {
-  todo <- dplyr::filter(games, game_date %in% as.Date(dates), is.na(home_win))
+#'
+#' With `pending_only = FALSE`, games that are already final are predicted
+#' too (for backfilling). Their features still come only from earlier games,
+#' and the models never saw this season, so the result is what the models
+#' would have predicted before tip-off.
+live_predict <- function(games, schedule, fitted, models, dates, pending_only = TRUE) {
+  todo <- dplyr::filter(games, game_date %in% as.Date(dates))
+  if (pending_only) todo <- dplyr::filter(todo, is.na(home_win))
   if (nrow(todo) == 0) {
     return(tibble::tibble())
   }
@@ -82,16 +88,25 @@ live_predict <- function(games, schedule, fitted, models, dates) {
     )
 }
 
-#' Append predictions for games that have not started and are not logged yet.
-append_prediction_log <- function(preds, log_path, now = Sys.time()) {
+#' Append predictions that are not logged yet.
+#'
+#' `source = "pre-game"` keeps only games that have not started. `source =
+#' "backfill"` keeps only games that have started, for games the log missed;
+#' these rows are labeled so they are never mistaken for pre-game predictions.
+append_prediction_log <- function(preds, log_path, now = Sys.time(), source = c("pre-game", "backfill")) {
+  source <- match.arg(source)
   existing <- if (file.exists(log_path)) {
     readr::read_csv(log_path, show_col_types = FALSE, col_types = readr::cols(game_id = "i", .default = "?"))
   } else {
     NULL
   }
 
+  if (nrow(preds) == 0) {
+    return(invisible(0L))
+  }
   tip <- as.POSIXct(preds$tipoff, tz = "America/New_York")
-  preds <- preds[tip > now, , drop = FALSE]
+  started <- tip <= now
+  preds <- preds[if (source == "pre-game") !started else started, , drop = FALSE]
   if (!is.null(existing)) {
     key <- paste(existing$game_id, existing$model)
     preds <- preds[!paste(preds$game_id, preds$model) %in% key, , drop = FALSE]
@@ -102,6 +117,7 @@ append_prediction_log <- function(preds, log_path, now = Sys.time()) {
 
   preds$tipoff <- format(as.POSIXct(preds$tipoff, tz = "America/New_York"), "%Y-%m-%dT%H:%M:%S%z")
   preds$predicted_at <- format(now, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+  preds$source <- source
   dir.create(dirname(log_path), recursive = TRUE, showWarnings = FALSE)
   readr::write_csv(preds, log_path, append = file.exists(log_path))
   invisible(nrow(preds))
@@ -109,6 +125,8 @@ append_prediction_log <- function(preds, log_path, now = Sys.time()) {
 
 #' Join logged predictions with final results.
 score_predictions <- function(log, results) {
+  # Logs written before the source column existed hold pre-game rows only.
+  if (!"source" %in% names(log)) log$source <- "pre-game"
   log |>
     dplyr::inner_join(dplyr::select(results, game_id, home_win), by = "game_id") |>
     dplyr::mutate(correct = (prob_home >= 0.5) == (home_win == 1))
@@ -123,6 +141,8 @@ live_summary <- function(scored) {
     dplyr::group_by(model) |>
     dplyr::summarise(
       n = dplyr::n(),
+      pre_game = sum(.data$source == "pre-game"),
+      backfill = sum(.data$source == "backfill"),
       accuracy = mean(correct),
       brier = mean((prob_home - home_win)^2),
       log_loss = -mean(home_win * log(pmax(prob_home, 1e-12)) + (1 - home_win) * log(pmax(1 - prob_home, 1e-12))),

@@ -25,33 +25,66 @@ scored here.
 A team's first game of the season has no rolling history, so those games are
 predicted with the Elo-only model for every model and marked as fallbacks.
 
+**Backfilled games.** Logging started on October 28, 2026. Games played before
+that were predicted afterwards and are labeled `backfill` in the log. They
+were predicted the same way: features use only games before each game's date,
+and the models never saw any 2026-27 data. A test checks that a backfilled
+prediction equals the one made from data cut off before that day. They are
+still not a pre-game record, so the tables show them separately.
+
 Last prediction logged: `r updated` (UTC).
 
 ## Accuracy to date
 
 ```{r}
-if (nrow(scored) == 0) {
-  cat("No logged games have finished yet.\n")
-} else {
-  scored |>
+#| output: asis
+acc_table <- function(d) {
+  d |>
     group_by(model) |>
     summarise(
       Games = n(),
-      Accuracy = sprintf("%.1f%%", 100 * mean(correct)),
+      acc = mean(correct),
       Brier = sprintf("%.3f", mean((prob_home - home_win)^2)),
       .groups = "drop"
     ) |>
-    arrange(desc(Accuracy)) |>
-    rename(Model = model) |>
+    arrange(desc(acc)) |>
+    transmute(Model = model, Games, Accuracy = sprintf("%.1f%%", 100 * acc), Brier) |>
     knitr::kable(align = "lrrr")
 }
+if (nrow(scored) == 0) {
+  cat("No logged games have finished yet.\n")
+} else {
+  n_games <- length(unique(scored$game_id))
+  n_pre <- length(unique(scored$game_id[scored$source == "pre-game"]))
+  cat(sprintf(
+    "%d games scored: %d backfilled, %d logged before tip-off. With this few games, accuracy can move by about %.0f percentage points either way.\n\n",
+    n_games, n_games - n_pre, n_pre, 100 * 1.96 * sqrt(0.25 / n_games)
+  ))
+}
+```
+
+```{r}
+if (nrow(scored) > 0) acc_table(scored)
 ```
 
 ```{r}
 #| fig-height: 4
 if (nrow(scored) > 0 && length(unique(scored$game_date)) > 1) {
-  plot_live_accuracy(scored, c("Logistic: Elo only", "Ridge: rolling + Elo", "Majority (home win rate)"))
+  pre <- scored$game_date[scored$source == "pre-game"]
+  plot_live_accuracy(
+    scored,
+    c("Logistic: Elo only", "Ridge: rolling + Elo", "Majority (home win rate)"),
+    pregame_start = if (length(pre)) min(pre) else NULL
+  )
 }
+```
+
+### Pre-game predictions only
+
+```{r}
+#| output: asis
+pre_scored <- if (nrow(scored) > 0) filter(scored, source == "pre-game") else scored
+if (nrow(pre_scored) == 0) cat("No games logged before tip-off have finished yet.\n") else acc_table(pre_scored)
 ```
 
 ## Latest predictions
