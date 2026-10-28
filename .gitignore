@@ -7,6 +7,7 @@
 # Project outputs and large artifacts
 data/*.RData
 data/*.rds
+!data/team_box_raw.rds
 hw/
 
 # knitr cache and intermediate figures
