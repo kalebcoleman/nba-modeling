@@ -5,7 +5,21 @@
 .DS_Store
 
 # Project outputs and large artifacts
-outputs/
 data/*.RData
 data/*.rds
+!data/team_box_raw.rds
 hw/
+
+# knitr cache and intermediate figures
+*_cache/
+*_files/
+_targets/
+paper/*_files/
+paper/.quarto/
+data/live/
+_site/
+.quarto/
+
+/.quarto/
+**/*.quarto_ipynb
+outputs/*.rds

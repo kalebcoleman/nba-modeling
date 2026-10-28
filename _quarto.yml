@@ -1,0 +1,45 @@
+project:
+  type: website
+  execute-dir: project
+  output-dir: _site
+  render:
+    - index.qmd
+    - live.qmd
+    - methods.qmd
+    - paper/paper.qmd
+  resources:
+    - paper/paper.pdf
+  post-render: scripts/copy_paper_pdf.R
+
+website:
+  title: "NBA win modeling"
+  site-url: https://kalebcoleman.github.io/nba-modeling/
+  repo-url: https://github.com/kalebcoleman/nba-modeling
+  navbar:
+    left:
+      - href: index.qmd
+        text: Results
+      - href: live.qmd
+        text: Live 2026-27
+      - href: methods.qmd
+        text: Methods
+      - href: paper/paper.qmd
+        text: Paper
+    right:
+      - icon: github
+        href: https://github.com/kalebcoleman/nba-modeling
+  page-footer:
+    left: "Kaleb Coleman. Data: hoopR / SportsDataverse and ESPN."
+
+format:
+  html:
+    theme: litera
+    css: site.css
+    toc: true
+    fig-responsive: true
+
+execute:
+  freeze: auto
+  echo: false
+  warning: false
+  message: false
