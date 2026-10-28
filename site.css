@@ -1,0 +1,8 @@
+body {
+  background: #fcfcfb;
+  color: #0b0b0b;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.table { font-variant-numeric: tabular-nums; }
+.lead-number { font-size: 2.2rem; font-weight: 700; line-height: 1.1; }
+.lead-label { color: #52514e; font-size: 0.9rem; margin-bottom: 1rem; }
