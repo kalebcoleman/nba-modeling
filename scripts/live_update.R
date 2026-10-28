@@ -32,7 +32,8 @@ message(sprintf("Logged %d new pre-game predictions for %s", n_new, today))
 # Backfill finished games the log is missing (the start of the season, or a
 # day the job did not run). Rows are labeled "backfill".
 logged_ids <- if (file.exists(log_path)) readr::read_csv(log_path, show_col_types = FALSE)$game_id else integer()
-missing_dates <- unique(games$game_date[games$season == season & !is.na(games$home_win) & !games$game_id %in% logged_ids])
+unlogged <- games$season == season & !is.na(games$home_win) & !games$game_id %in% logged_ids
+missing_dates <- unique(games$game_date[unlogged])
 if (length(missing_dates) > 0) {
   past <- live_predict(games, schedule, fitted, models, dates = missing_dates, pending_only = FALSE)
   past <- dplyr::filter(past, !game_id %in% logged_ids)
