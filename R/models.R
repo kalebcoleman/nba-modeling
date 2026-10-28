@@ -1,10 +1,11 @@
-# Model specifications, fitting, and metrics.
+# Model fitting and metrics.
 #
-# Every fit function takes a training frame and a test frame and returns
-# predicted home-win probabilities for the test frame. Nothing here looks at
-# test outcomes.
+# A model is a list with `name`, `features`, and `fit`. `fit(train, features)`
+# trains on `train` and returns a function that maps new data to home-win
+# probabilities. Fitting never sees test outcomes. Model definitions live in
+# R/model_registry.R.
 
-#' Feature sets used in the paper.
+#' Feature sets used by the models.
 feature_sets <- function(games) {
   rolling <- c(
     grep("^(home|away)_.*_roll(3|5|10)$", names(games), value = TRUE),
@@ -31,48 +32,54 @@ model_frame <- function(games) {
     dplyr::filter(dplyr::if_all(dplyr::all_of(feats), is.finite))
 }
 
-fit_majority <- function(train, test, features = NULL) {
-  rep(mean(train$home_win), nrow(test))
+fit_majority <- function(train, features = NULL) {
+  rate <- mean(train$home_win)
+  function(newdata) rep(rate, nrow(newdata))
 }
 
-fit_logit <- function(train, test, features) {
+fit_logit <- function(train, features) {
   fit <- stats::glm(
     stats::reformulate(features, "home_win"),
-    data = train,
+    data = train[, c("home_win", features)],
     family = stats::binomial()
   )
-  as.numeric(stats::predict(fit, newdata = test, type = "response"))
+  # Keep only what predict() needs.
+  fit[c("data", "model", "y", "residuals", "fitted.values", "linear.predictors", "weights", "prior.weights")] <- NULL
+  function(newdata) as.numeric(stats::predict(fit, newdata = newdata, type = "response"))
 }
 
 # glmnet with the penalty chosen by cross-validation over whole seasons, so a
 # season is never split between fitting and validation folds.
-fit_glmnet <- function(train, test, features, alpha_grid = 0) {
-  xtr <- as.matrix(train[, features])
-  xte <- as.matrix(test[, features])
+fit_glmnet <- function(train, features, alpha_grid = 0) {
+  x <- as.matrix(train[, features])
   foldid <- as.integer(factor(train$season %% 5))
 
   best <- NULL
   for (a in alpha_grid) {
-    cv_fit <- glmnet::cv.glmnet(xtr, train$home_win, family = "binomial", alpha = a, foldid = foldid)
+    cv_fit <- glmnet::cv.glmnet(x, train$home_win, family = "binomial", alpha = a, foldid = foldid)
     if (is.null(best) || min(cv_fit$cvm) < min(best$cvm)) best <- cv_fit
   }
-  as.numeric(stats::predict(best, xte, s = "lambda.min", type = "response"))
+  function(newdata) {
+    as.numeric(stats::predict(best, as.matrix(newdata[, features]), s = "lambda.min", type = "response"))
+  }
 }
 
-#' Model specifications compared in the paper.
-model_specs <- function(games) {
-  fs <- feature_sets(games)
-  list(
-    "Majority (home win rate)" = list(fit = fit_majority, features = NULL),
-    "Logistic: Elo only" = list(fit = fit_logit, features = fs$elo),
-    "Logistic: lean rolling" = list(fit = fit_logit, features = fs$lean),
-    "Ridge: rolling" = list(fit = fit_glmnet, features = fs$rolling),
-    "Ridge: rolling + Elo" = list(fit = fit_glmnet, features = fs$rolling_elo),
-    "Elastic net: rolling + Elo" = list(
-      fit = function(train, test, features) fit_glmnet(train, test, features, alpha_grid = c(0.25, 0.5, 0.75)),
-      features = fs$rolling_elo
-    )
-  )
+#' Wrap a parsnip model specification as a fit function.
+#'
+#' @param spec A parsnip model spec with mode "classification".
+#' @param normalize Center and scale predictors (needed for neural nets).
+fit_parsnip <- function(spec, normalize = FALSE) {
+  function(train, features) {
+    train <- train[, c("home_win", features)]
+    train$home_win <- factor(train$home_win, levels = c(0, 1))
+    rec <- recipes::recipe(home_win ~ ., data = train)
+    if (normalize) rec <- recipes::step_normalize(rec, recipes::all_predictors())
+    wf <- workflows::workflow(rec, spec)
+    fitted <- parsnip::fit(wf, data = train)
+    function(newdata) {
+      as.numeric(stats::predict(fitted, new_data = newdata[, features], type = "prob")$.pred_1)
+    }
+  }
 }
 
 classification_metrics <- function(prob, truth, threshold = 0.5) {
@@ -92,20 +99,18 @@ classification_metrics <- function(prob, truth, threshold = 0.5) {
   )
 }
 
-#' Fit every model on seasons before `test_season` and predict `test_season`.
-predict_season <- function(frame, test_season, specs) {
+#' Fit one model on seasons before `test_season` and predict `test_season`.
+predict_season <- function(frame, test_season, model) {
   train <- dplyr::filter(frame, season < test_season)
   test <- dplyr::filter(frame, season == test_season)
   stopifnot(nrow(train) > 0, nrow(test) > 0, max(train$season) < min(test$season))
 
-  dplyr::bind_rows(lapply(names(specs), function(name) {
-    spec <- specs[[name]]
-    tibble::tibble(
-      model = name,
-      season = test_season,
-      game_id = test$game_id,
-      home_win = test$home_win,
-      prob = spec$fit(train, test, spec$features)
-    )
-  }))
+  predictor <- model$fit(train, model$features)
+  tibble::tibble(
+    model = model$name,
+    season = test_season,
+    game_id = test$game_id,
+    home_win = test$home_win,
+    prob = predictor(test)
+  )
 }

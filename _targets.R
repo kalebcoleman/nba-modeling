@@ -14,6 +14,24 @@ VALIDATION_SEASONS <- 2015:2025
 HOLDOUT_SEASON <- 2026
 SNAPSHOT <- "data/team_box_raw.rds"
 
+# One row per model. Each model gets its own validation and holdout targets,
+# so adding or editing a model only refits that model. See R/model_registry.R.
+MODELS <- tibble::tibble(
+  id = c(
+    "majority", "elo_logit", "lean_logit", "ridge_rolling", "ridge_rolling_elo",
+    "enet_rolling_elo", "xgboost", "mlp"
+  ),
+  model_fn = rlang::syms(paste0("model_", id))
+)
+
+model_targets <- tar_map(
+  values = MODELS,
+  names = "id",
+  tar_target(model_spec, model_fn(games)),
+  tar_target(model_val_preds, rolling_origin_predictions(frame, VALIDATION_SEASONS, model_spec)),
+  tar_target(model_holdout_preds, predict_season(frame, HOLDOUT_SEASON, model_spec))
+)
+
 list(
   # Use the saved snapshot when present so results reproduce exactly; delete
   # it to pull fresh data through hoopR.
@@ -22,11 +40,11 @@ list(
   }),
   tar_target(games, build_games(team_box_raw)),
   tar_target(frame, model_frame(games)),
-  tar_target(specs, model_specs(games)),
   tar_target(coverage, dplyr::count(games, season, name = "games")),
 
-  tar_target(validation_preds, rolling_origin_predictions(frame, VALIDATION_SEASONS, specs)),
-  tar_target(holdout_preds, predict_season(frame, HOLDOUT_SEASON, specs)),
+  model_targets,
+  tar_combine(validation_preds, model_targets[["model_val_preds"]]),
+  tar_combine(holdout_preds, model_targets[["model_holdout_preds"]]),
 
   tar_target(validation_by_season, summarise_predictions(validation_preds)),
   tar_target(
@@ -43,7 +61,7 @@ list(
     holdout_bootstrap,
     bootstrap_holdout(
       holdout_preds,
-      thresholds = stats::setNames(as.list(rep(0.5, length(specs))), names(specs)),
+      thresholds = stats::setNames(as.list(rep(0.5, nrow(MODELS))), unique(holdout_preds$model)),
       reference = "Logistic: Elo only"
     )
   ),
