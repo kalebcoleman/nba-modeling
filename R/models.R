@@ -53,6 +53,8 @@ fit_logit <- function(train, features) {
 fit_glmnet <- function(train, features, alpha_grid = 0) {
   x <- as.matrix(train[, features])
   foldid <- as.integer(factor(train$season %% 5))
+  # cv.glmnet needs at least three folds; with fewer seasons use random folds.
+  if (length(unique(foldid)) < 3) foldid <- NULL
 
   best <- NULL
   for (a in alpha_grid) {

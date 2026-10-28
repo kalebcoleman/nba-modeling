@@ -16,3 +16,4 @@ hw/
 _targets/
 paper/*_files/
 paper/.quarto/
+data/live/

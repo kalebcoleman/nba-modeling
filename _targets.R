@@ -17,11 +17,8 @@ SNAPSHOT <- "data/team_box_raw.rds"
 # One row per model. Each model gets its own validation and holdout targets,
 # so adding or editing a model only refits that model. See R/model_registry.R.
 MODELS <- tibble::tibble(
-  id = c(
-    "majority", "elo_logit", "lean_logit", "ridge_rolling", "ridge_rolling_elo",
-    "enet_rolling_elo", "xgboost", "mlp"
-  ),
-  model_fn = rlang::syms(paste0("model_", id))
+  id = MODEL_IDS,
+  model_fn = rlang::syms(paste0("model_", MODEL_IDS))
 )
 
 model_targets <- tar_map(

@@ -1,14 +1,25 @@
 # Model registry.
 #
 # To add a model:
-#   1. Write a function here that takes `games` and returns
-#      list(name = ..., features = ..., fit = ...). `fit` can be one of the
-#      helpers in R/models.R, or fit_parsnip(<any parsnip spec>).
-#   2. Add the function's name to MODELS in _targets.R.
+#   1. Write a function model_<id>() here that takes `games` and returns
+#      list(name = ..., features = ..., fit = ...). The fit can be one of the
+#      helpers in models.R, or fit_parsnip() around any parsnip spec.
+#   2. Add <id> to MODEL_IDS below.
 # targets then fits and evaluates only the new model; the others stay cached.
+# The live predictions pick it up automatically.
 #
 # Hyperparameters for xgboost and the neural net are fixed, reasonable values,
 # not tuned. Tuning would need nested time-ordered validation.
+
+MODEL_IDS <- c(
+  "majority", "elo_logit", "lean_logit", "ridge_rolling", "ridge_rolling_elo",
+  "enet_rolling_elo", "xgboost", "mlp"
+)
+
+#' Build every registered model for `games`.
+all_models <- function(games) {
+  lapply(paste0("model_", MODEL_IDS), function(fn) get(fn)(games))
+}
 
 model_majority <- function(games) {
   list(name = "Majority (home win rate)", features = character(), fit = fit_majority)
