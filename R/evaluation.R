@@ -8,8 +8,8 @@
 #   earlier seasons.
 
 #' Out-of-sample predictions for each season in `seasons`.
-rolling_origin_predictions <- function(frame, seasons, specs) {
-  dplyr::bind_rows(lapply(seasons, function(s) predict_season(frame, s, specs)))
+rolling_origin_predictions <- function(frame, seasons, model) {
+  dplyr::bind_rows(lapply(seasons, function(s) predict_season(frame, s, model)))
 }
 
 summarise_predictions <- function(preds, threshold = 0.5) {

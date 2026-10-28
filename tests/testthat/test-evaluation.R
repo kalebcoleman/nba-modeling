@@ -6,11 +6,11 @@ test_that("predict_season trains only on earlier seasons", {
     x = stats::rnorm(300)
   )
   seen <- NULL
-  spy <- function(train, test, features) {
+  spy <- function(train, features) {
     seen <<- unique(train$season)
-    rep(0.5, nrow(test))
+    function(newdata) rep(0.5, nrow(newdata))
   }
-  predict_season(frame, 2003, list(spy = list(fit = spy, features = "x")))
+  predict_season(frame, 2003, list(name = "spy", fit = spy, features = "x"))
   expect_equal(sort(seen), c(2001, 2002))
 })
 
@@ -36,4 +36,17 @@ test_that("calibration deciles are computed within each model", {
   bins <- calibration_bins(preds, bins = 10)
   expect_equal(nrow(bins), 20)
   expect_true(all(table(bins$model) == 10))
+})
+
+test_that("every registered model fits and returns probabilities", {
+  games <- build_games(fake_team_box(seasons = 2001:2004, n_teams = 6, n_days = 20))
+  frame <- model_frame(games)
+  fns <- ls(envir = globalenv(), pattern = "^model_")
+  fns <- setdiff(fns, c("model_frame"))
+  for (fn in fns) {
+    model <- get(fn)(games)
+    p <- predict_season(frame, 2004, model)
+    expect_true(all(p$prob >= 0 & p$prob <= 1), info = fn)
+    expect_equal(nrow(p), sum(frame$season == 2004), info = fn)
+  }
 })

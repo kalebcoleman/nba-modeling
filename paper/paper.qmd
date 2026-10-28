@@ -63,7 +63,8 @@ vs <- function(m, s) filter(validation_by_season, model == m, season == s)
 
 model_order <- c(
   "Majority (home win rate)", "Logistic: Elo only", "Logistic: lean rolling",
-  "Ridge: rolling", "Ridge: rolling + Elo", "Elastic net: rolling + Elo"
+  "Ridge: rolling", "Ridge: rolling + Elo", "Elastic net: rolling + Elo",
+  "Gradient boosting: rolling + Elo", "Neural net (MLP): rolling + Elo"
 )
 holdout_n <- h("Ridge: rolling + Elo")$n
 home_rate_train <- mean(frame$home_win[frame$season < 2026])
@@ -174,6 +175,11 @@ The models are:
 - **Ridge, rolling:** all rolling features (3, 5, and 10 games), no Elo.
 - **Ridge, rolling + Elo**, and **elastic net, rolling + Elo**
   ($\alpha \in \{0.25, 0.5, 0.75\}$).
+- **Gradient boosting** (xgboost; 400 trees of depth 3, learning rate 0.03)
+  and a **neural net** (one hidden layer of 8 units, weight decay 0.1, inputs
+  standardized), both on rolling features + Elo. Their settings are fixed
+  defaults, not tuned, so they are a check on whether a nonlinear model finds
+  structure the linear models miss rather than a tuned comparison.
 
 # Results
 
@@ -234,6 +240,16 @@ For elastic net it is `r f3(b("Elastic net: rolling + Elo")$auc_diff_vs_ref_low)
 to `r f3(b("Elastic net: rolling + Elo")$auc_diff_vs_ref_high)`. Rolling
 features may add a small amount of discrimination, but this season cannot
 distinguish that from no gain.
+
+The two nonlinear models did not improve on the linear ones. Gradient
+boosting reached an AUC of `r f3(h("Gradient boosting: rolling + Elo")$auc)`
+on the holdout, close to Elo only, and the untuned neural net reached
+`r f3(h("Neural net (MLP): rolling + Elo")$auc)`, below Elo only (paired
+interval `r f3(b("Neural net (MLP): rolling + Elo")$auc_diff_vs_ref_low)` to
+`r f3(b("Neural net (MLP): rolling + Elo")$auc_diff_vs_ref_high)`). With a
+few hundred mostly correlated features and noisy outcomes, there is little
+nonlinear structure for them to find, and the neural net likely overfits
+without tuning.
 
 Choosing the threshold on 2025 instead of using 0.5 changed holdout accuracy
 by at most `r sprintf("%.1f", 100 * max(abs(holdout_metrics$accuracy - holdout_metrics$accuracy_at_validation_threshold)))`
