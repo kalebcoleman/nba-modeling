@@ -4,5 +4,6 @@ body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 .table { font-variant-numeric: tabular-nums; }
+.mermaid svg { font-family: system-ui, -apple-system, "Segoe UI", sans-serif !important; }
 .lead-number { font-size: 2.2rem; font-weight: 700; line-height: 1.1; }
 .lead-label { color: #52514e; font-size: 0.9rem; margin-bottom: 1rem; }

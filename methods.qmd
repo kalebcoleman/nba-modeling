@@ -5,16 +5,29 @@ title: "Methods"
 ## Pipeline
 
 ```{mermaid}
-flowchart LR
-  A[hoopR box scores<br/>2002-2026] --> C[per-game efficiency]
-  N[nba-data: ESPN<br/>current season + schedule] --> C
-  C --> R[lagged rolling means<br/>3, 5, 10 games]
-  C --> E[pre-game Elo]
-  R --> G[game-level features]
+%%{init: {"themeVariables": {"fontSize": "18px", "fontFamily": "system-ui, -apple-system, Segoe UI, sans-serif"}, "flowchart": {"nodeSpacing": 50, "rankSpacing": 60, "padding": 14}}}%%
+flowchart TB
+  classDef source fill:#e8f0fb,stroke:#2f5d9e,stroke-width:2px,color:#0b0b0b
+  classDef step fill:#ffffff,stroke:#52514e,stroke-width:1.5px,color:#0b0b0b
+  classDef output fill:#e6f4ea,stroke:#2e7d4f,stroke-width:2px,color:#0b0b0b
+  A["<b>hoopR box scores</b><br/>2002-2026"]:::source
+  N["<b>nba-data (ESPN)</b><br/>current season + schedule"]:::source
+  C["<b>Per-game efficiency</b>"]:::step
+  R["<b>Lagged rolling means</b><br/>3, 5, and 10 games"]:::step
+  E["<b>Pre-game Elo</b>"]:::step
+  G["<b>Game-level features</b>"]:::step
+  V["<b>Rolling-origin validation</b><br/>2015-2025"]:::output
+  H["<b>Holdout</b><br/>2026"]:::output
+  L["<b>Live 2027</b><br/>logged before tip-off"]:::output
+  A --> C
+  N --> C
+  C --> R
+  C --> E
+  R --> G
   E --> G
-  G --> V[rolling-origin validation<br/>2015-2025]
-  G --> H[holdout 2026]
-  G --> L[live 2027<br/>logged before tip-off]
+  G --> V
+  G --> H
+  G --> L
 ```
 
 The analysis is a [`targets`](https://docs.ropensci.org/targets/) pipeline
