@@ -206,8 +206,8 @@
       "RemoteHost": "api.github.com",
       "RemoteUsername": "kalebcoleman",
       "RemoteRepo": "nba-data",
-      "RemoteRef": "polish/repo-hygiene",
-      "RemoteSha": "d001c49851e9ff1e7efe8dda5fc640cab56cfdcb"
+      "RemoteRef": "main",
+      "RemoteSha": "db515d89bd8aa37e6ffb0ad8824c7d8ee9710aaa"
     },
     "R6": {
       "Package": "R6",
