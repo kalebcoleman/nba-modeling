@@ -1,9 +1,9 @@
 # Model fitting and metrics.
 #
-# A model is a list with `name`, `features`, and `fit`. `fit(train, features)`
-# trains on `train` and returns a function that maps new data to home-win
-# probabilities. Fitting never sees test outcomes. Model definitions live in
-# R/model_registry.R.
+# A model is a list with `name`, `features`, and `fit`. Its fit function
+# trains on the training frame and returns a function that maps new data to
+# home-win probabilities. Fitting never sees test outcomes. Individual models
+# are defined in model_registry.R.
 
 #' Feature sets used by the models.
 feature_sets <- function(games) {
