@@ -90,11 +90,6 @@ list(
     ),
     format = "file"
   ),
-  tar_target(
-    fig_odds,
-    save_plot(plot_odds_ratios(odds_lean_elo), "figures/odds_ratios.png", height = 3),
-    format = "file"
-  ),
 
   tar_quarto(paper, "paper/paper.qmd")
 )

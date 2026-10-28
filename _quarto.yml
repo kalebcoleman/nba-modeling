@@ -1,0 +1,4 @@
+project:
+  execute-dir: project
+  render:
+    - paper/paper.qmd
