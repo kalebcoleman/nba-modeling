@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "Leakage-Aware Modeling of NBA Game Outcomes Using Rolling Performance Metrics"
+authors:
+  - family-names: Coleman
+    given-names: Kaleb
+repository-code: "https://github.com/kalebcoleman/nba-modeling"
+license: MIT
+date-released: 2026-01-25

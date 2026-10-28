@@ -38,5 +38,8 @@ run_elo_plot()
 - `outputs/logit_fit.rds`, `outputs/logit_odds_ratios.csv` - inferential model outputs
 
 ## Notes
-- The `data/` and `outputs/` folders are ignored in git to avoid large binary files.
+- The `data/` and `outputs/` folders are ignored in git. Rebuild `data/nba_games_modeling.RData` with `run_advanced_stats()` (needs network access).
 - Models are evaluated using a final-season holdout (2025) to preserve time ordering.
+
+## License
+Code is released under the MIT License (see `LICENSE`). Game data is loaded at run time through `hoopR` and is not included in this repository.

@@ -9,3 +9,7 @@ outputs/
 data/*.RData
 data/*.rds
 hw/
+
+# knitr cache and intermediate figures
+*_cache/
+*_files/
