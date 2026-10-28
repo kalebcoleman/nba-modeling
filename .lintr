@@ -1,0 +1,8 @@
+linters: linters_with_defaults(
+    line_length_linter = line_length_linter(120),
+    object_usage_linter = NULL,
+    object_name_linter = object_name_linter(c("snake_case", "SNAKE_CASE", "symbols")),
+    indentation_linter = NULL,
+    return_linter = NULL
+  )
+exclusions: list("renv", "_targets", "reports", "proposal", "hw")
