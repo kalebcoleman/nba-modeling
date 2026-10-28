@@ -94,7 +94,7 @@ holdout_table <- function(holdout_preds, val_preds) {
 #' Calibration bins for one model's holdout predictions.
 calibration_bins <- function(preds, bins = 10) {
   preds |>
-    dplyr::mutate(bin = dplyr::ntile(prob, bins)) |>
+    dplyr::mutate(bin = dplyr::ntile(prob, bins), .by = model) |>
     dplyr::group_by(model, bin) |>
     dplyr::summarise(pred_mean = mean(prob), obs_rate = mean(home_win), n = dplyr::n(), .groups = "drop")
 }
