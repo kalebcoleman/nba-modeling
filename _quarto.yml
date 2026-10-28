@@ -9,6 +9,7 @@ project:
     - paper/paper.qmd
   resources:
     - paper/paper.pdf
+  post-render: scripts/copy_paper_pdf.R
 
 website:
   title: "NBA win modeling"
